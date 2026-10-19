@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: java-kafka-payments
+
+  kafka:
+    # Kafka broker addresses — matches docker-compose service names
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9093,localhost:9094}
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # Reliability settings
+      acks: all                  # wait for all replicas to acknowledge
+      retries: 3
+      properties:
+        enable.idempotence: true # prevent duplicate messages (Pro Tip from diagram)
+
+    consumer:
+      group-id: payments-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.acme.payments.model"
+
+# Kafka topic config
+kafka:
+  topic:
+    transactions: transactions   # matches diagram: TOPIC: TRANSACTIONS
+    partitions: 3                # 3 partitions like the diagram
+    replicas: 1                  # 1 for local dev; use 3 in production
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

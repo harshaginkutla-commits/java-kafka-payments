@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kafka Payment Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+    header { background: #1e2130; border-bottom: 1px solid #2d3748; padding: 16px 32px; display: flex; align-items: center; gap: 12px; }
+    header h1 { font-size: 1.3rem; font-weight: 600; }
+    .kafka-badge { background: #e53e3e; color: white; font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; }
+
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 24px 32px; max-width: 1200px; margin: 0 auto; }
+
+    .card { background: #1e2130; border: 1px solid #2d3748; border-radius: 10px; padding: 20px; }
+    .card h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; color: #718096; margin-bottom: 16px; }
+
+    /* Stats row */
+    .stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .stat { background: #1e2130; border: 1px solid #2d3748; border-radius: 10px; padding: 20px; text-align: center; }
+    .stat .value { font-size: 2rem; font-weight: 700; color: #63b3ed; }
+    .stat .label { font-size: 0.8rem; color: #718096; margin-top: 4px; }
+
+    /* Flow diagram */
+    .flow { grid-column: 1 / -1; display: flex; align-items: center; gap: 0; overflow-x: auto; padding: 8px 0; }
+    .flow-step { background: #2d3748; border-radius: 8px; padding: 12px 16px; text-align: center; min-width: 130px; font-size: 0.8rem; }
+    .flow-step .icon { font-size: 1.5rem; margin-bottom: 6px; }
+    .flow-step .name { font-weight: 600; color: #e2e8f0; }
+    .flow-step .sub { color: #718096; font-size: 0.7rem; margin-top: 2px; }
+    .flow-arrow { color: #4a5568; font-size: 1.5rem; padding: 0 8px; }
+    .flow-step.active { border: 1px solid #63b3ed; background: #1a365d; }
+
+    /* Submit form */
+    label { display: block; font-size: 0.8rem; color: #718096; margin-bottom: 4px; margin-top: 12px; }
+    input, select { width: 100%; background: #2d3748; border: 1px solid #4a5568; border-radius: 6px; padding: 8px 12px; color: #e2e8f0; font-size: 0.9rem; }
+    input:focus, select:focus { outline: none; border-color: #63b3ed; }
+    .btn { margin-top: 16px; width: 100%; padding: 10px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+    .btn-primary { background: #3182ce; color: white; }
+    .btn-primary:hover { background: #2b6cb0; }
+    .btn-demo { background: #2d3748; color: #63b3ed; border: 1px solid #63b3ed; margin-top: 8px; }
+    .btn-demo:hover { background: #1a365d; }
+    .response { margin-top: 12px; padding: 10px; background: #2d3748; border-radius: 6px; font-size: 0.8rem; color: #68d391; display: none; word-break: break-all; }
+
+    /* Log feed */
+    #log-feed { height: 320px; overflow-y: auto; font-family: monospace; font-size: 0.75rem; }
+    .log-entry { padding: 6px 8px; border-bottom: 1px solid #2d3748; display: flex; gap: 8px; }
+    .log-entry:hover { background: #2d3748; }
+    .log-time { color: #4a5568; white-space: nowrap; }
+    .log-consumer { font-weight: 700; white-space: nowrap; }
+    .log-fraud { color: #fc8181; }
+    .log-payment { color: #68d391; }
+    .log-notify { color: #fbd38d; }
+    .log-analytics { color: #b794f4; }
+    .log-producer { color: #63b3ed; }
+    .log-msg { color: #a0aec0; }
+
+    /* Partition viz */
+    .partitions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .partition { background: #2d3748; border-radius: 8px; padding: 12px; }
+    .partition h3 { font-size: 0.75rem; color: #718096; margin-bottom: 8px; }
+    .partition-count { font-size: 1.5rem; font-weight: 700; color: #63b3ed; }
+    .partition-bar { height: 6px; background: #4a5568; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+    .partition-fill { height: 100%; background: #63b3ed; border-radius: 3px; transition: width 0.5s; }
+
+    /* Consumer groups */
+    .groups { display: grid; gap: 8px; }
+    .group { display: flex; align-items: center; gap: 10px; padding: 10px; background: #2d3748; border-radius: 8px; }
+    .group-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .group-name { font-size: 0.8rem; font-weight: 600; flex: 1; }
+    .group-count { font-size: 0.75rem; color: #718096; }
+
+    @media (max-width: 768px) { .layout { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.5rem">⚡</span>
+  <h1>Kafka Payment Dashboard</h1>
+  <span class="kafka-badge">LIVE</span>
+  <span style="margin-left:auto;font-size:0.8rem;color:#718096">3 Brokers · 3 Partitions · 4 Consumer Groups</span>
+</header>
+
+<!-- Transaction Flow (matches diagram) -->
+<div style="padding: 20px 32px 0; max-width:1200px; margin:0 auto;">
+  <div class="card">
+    <h2>Transaction Journey</h2>
+    <div class="flow">
+      <div class="flow-step active" id="step-producer">
+        <div class="icon">📱</div>
+        <div class="name">Producer</div>
+        <div class="sub">Web/Mobile App</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" id="step-kafka">
+        <div class="icon">📦</div>
+        <div class="name">Kafka Topic</div>
+        <div class="sub">3 Partitions</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" id="step-fraud">
+        <div class="icon">🔍</div>
+        <div class="name">Fraud Check</div>
+        <div class="sub">Consumer Group 1</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" id="step-payment">
+        <div class="icon">💳</div>
+        <div class="name">Payment</div>
+        <div class="sub">Consumer Group 2</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" id="step-notify">
+        <div class="icon">📧</div>
+        <div class="name">Notify</div>
+        <div class="sub">Consumer Group 3</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" id="step-analytics">
+        <div class="icon">📊</div>
+        <div class="name">Analytics</div>
+        <div class="sub">Consumer Group 4</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="value" id="stat-total">0</div>
+      <div class="label">Total Transactions</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="stat-payment">$0</div>
+      <div class="label">Total PAYMENT</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="stat-transfer">$0</div>
+      <div class="label">Total TRANSFER</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="stat-refund">$0</div>
+      <div class="label">Total REFUND</div>
+    </div>
+  </div>
+
+  <!-- Submit Transaction -->
+  <div class="card">
+    <h2>Submit Transaction (Producer)</h2>
+
+    <label>User ID (determines partition)</label>
+    <select id="userId">
+      <option value="user-alice">user-alice</option>
+      <option value="user-bob">user-bob</option>
+      <option value="user-charlie">user-charlie</option>
+      <option value="user-diana">user-diana</option>
+      <option value="user-eve">user-eve</option>
+    </select>
+
+    <label>Amount (USD)</label>
+    <input type="number" id="amount" value="500" min="1" max="50000">
+
+    <label>Transaction Type</label>
+    <select id="txnType">
+      <option value="PAYMENT">PAYMENT</option>
+      <option value="TRANSFER">TRANSFER</option>
+      <option value="REFUND">REFUND</option>
+      <option value="WITHDRAWAL">WITHDRAWAL</option>
+    </select>
+
+    <button class="btn btn-primary" onclick="submitTransaction()">
+      ⚡ Publish to Kafka
+    </button>
+    <button class="btn btn-demo" onclick="runDemo()">
+      🎲 Generate 10 Random Transactions
+    </button>
+
+    <div class="response" id="response-box"></div>
+  </div>
+
+  <!-- Partition Distribution -->
+  <div class="card">
+    <h2>Partition Distribution</h2>
+    <div class="partitions">
+      <div class="partition">
+        <h3>PARTITION 0</h3>
+        <div class="partition-count" id="p0-count">0</div>
+        <div style="font-size:0.7rem;color:#718096">messages</div>
+        <div class="partition-bar"><div class="partition-fill" id="p0-bar" style="width:0%"></div></div>
+      </div>
+      <div class="partition">
+        <h3>PARTITION 1</h3>
+        <div class="partition-count" id="p1-count">0</div>
+        <div style="font-size:0.7rem;color:#718096">messages</div>
+        <div class="partition-bar"><div class="partition-fill" id="p1-bar" style="width:0%"></div></div>
+      </div>
+      <div class="partition">
+        <h3>PARTITION 2</h3>
+        <div class="partition-count" id="p2-count">0</div>
+        <div style="font-size:0.7rem;color:#718096">messages</div>
+        <div class="partition-bar"><div class="partition-fill" id="p2-bar" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <h2 style="margin-top:20px">Consumer Groups</h2>
+    <div class="groups">
+      <div class="group">
+        <div class="group-dot" style="background:#fc8181"></div>
+        <div class="group-name">fraud-detection-group</div>
+        <div class="group-count">reads ALL partitions</div>
+      </div>
+      <div class="group">
+        <div class="group-dot" style="background:#68d391"></div>
+        <div class="group-name">payment-processing-group</div>
+        <div class="group-count">reads ALL partitions</div>
+      </div>
+      <div class="group">
+        <div class="group-dot" style="background:#fbd38d"></div>
+        <div class="group-name">notification-group</div>
+        <div class="group-count">reads ALL partitions</div>
+      </div>
+      <div class="group">
+        <div class="group-dot" style="background:#b794f4"></div>
+        <div class="group-name">analytics-group</div>
+        <div class="group-count">reads ALL partitions</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Log Feed -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <h2>Live Event Log <span style="font-weight:normal;color:#4a5568">(events flowing through consumers)</span></h2>
+    <div id="log-feed"></div>
+  </div>
+
+</div>
+
+<script>
+  const logs = [];
+
+  function addLog(consumer, message, cssClass) {
+    const now = new Date().toLocaleTimeString();
+    logs.unshift({ time: now, consumer, message, cssClass });
+    if (logs.length > 100) logs.pop();
+    renderLogs();
+  }
+
+  function renderLogs() {
+    const feed = document.getElementById('log-feed');
+    feed.innerHTML = logs.map(l => `
+      <div class="log-entry">
+        <span class="log-time">${l.time}</span>
+        <span class="log-consumer ${l.cssClass}">[${l.consumer}]</span>
+        <span class="log-msg">${l.message}</span>
+      </div>
+    `).join('');
+  }
+
+  async function submitTransaction() {
+    const userId = document.getElementById('userId').value;
+    const amount = parseFloat(document.getElementById('amount').value);
+    const type = document.getElementById('txnType').value;
+
+    const event = {
+      userId, amount, currency: 'USD', type,
+      description: `${type} from ${userId}`,
+      sourceAccount: `${userId}-account`,
+      destinationAccount: 'merchant-account-1'
+    };
+
+    addLog('PRODUCER', `Publishing ${type} $${amount} for ${userId}`, 'log-producer');
+
+    try {
+      const res = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event)
+      });
+      const data = await res.json();
+
+      const box = document.getElementById('response-box');
+      box.style.display = 'block';
+      box.textContent = `✓ TXN ID: ${data.transactionId}`;
+
+      // Simulate consumer logs appearing
+      setTimeout(() => addLog('FRAUD', `Checking transactionId=${data.transactionId.substring(0,8)}...`, 'log-fraud'), 300);
+      setTimeout(() => addLog('FRAUD', `✓ CLEARED transactionId=${data.transactionId.substring(0,8)}`, 'log-fraud'), 700);
+      setTimeout(() => addLog('PAYMENT', `Processing $${amount} ${type}`, 'log-payment'), 500);
+      setTimeout(() => addLog('PAYMENT', `✓ PROCESSED transactionId=${data.transactionId.substring(0,8)}`, 'log-payment'), 900);
+      setTimeout(() => addLog('NOTIFY', `📧 Email sent to ${userId}@example.com`, 'log-notify'), 600);
+      setTimeout(() => addLog('NOTIFY', `📱 SMS sent to user=${userId}`, 'log-notify'), 800);
+      setTimeout(() => addLog('ANALYTICS', `Recorded: ${type} $${amount}`, 'log-analytics'), 1000);
+
+      setTimeout(refreshStats, 1200);
+    } catch (e) {
+      addLog('ERROR', e.message, 'log-fraud');
+    }
+  }
+
+  async function runDemo() {
+    addLog('DEMO', 'Generating 10 random transactions...', 'log-producer');
+    try {
+      await fetch('/api/transactions/demo?count=10', { method: 'POST' });
+      addLog('DEMO', '10 transactions published! Watch the logs.', 'log-producer');
+      setTimeout(refreshStats, 3000);
+      setTimeout(refreshStats, 6000);
+    } catch (e) {
+      addLog('ERROR', e.message, 'log-fraud');
+    }
+  }
+
+  async function refreshStats() {
+    try {
+      const res = await fetch('/api/analytics');
+      const data = await res.json();
+
+      document.getElementById('stat-total').textContent = data.totalTransactions;
+
+      const amounts = data.amountByType || {};
+      document.getElementById('stat-payment').textContent =
+        '$' + Math.round(amounts.PAYMENT || 0).toLocaleString();
+      document.getElementById('stat-transfer').textContent =
+        '$' + Math.round(amounts.TRANSFER || 0).toLocaleString();
+      document.getElementById('stat-refund').textContent =
+        '$' + Math.round(amounts.REFUND || 0).toLocaleString();
+
+      const parts = data.countByPartition || {};
+      const total = Object.values(parts).reduce((a, b) => a + b, 0) || 1;
+
+      ['0','1','2'].forEach(p => {
+        const count = parts[p] || 0;
+        document.getElementById(`p${p}-count`).textContent = count;
+        document.getElementById(`p${p}-bar`).style.width = `${(count/total)*100}%`;
+      });
+    } catch (e) {
+      // Kafka not connected yet
+    }
+  }
+
+  // Poll stats every 3 seconds
+  setInterval(refreshStats, 3000);
+  refreshStats();
+</script>
+</body>
+</html>
