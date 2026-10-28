@@ -3,12 +3,20 @@ version: '3.8'
 # Matches the diagram: BROKER 1 (LEADER) + BROKER 2 (FOLLOWER) + BROKER 3 (FOLLOWER)
 # Plus Zookeeper for cluster coordination
 
+networks:
+  kafka-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: "1450"
+
 services:
 
   # Zookeeper — manages broker metadata and leader election
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     container_name: zookeeper
+    networks:
+      - kafka-net
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -23,6 +31,8 @@ services:
   kafka-1:
     image: confluentinc/cp-kafka:7.6.0
     container_name: kafka-broker-1
+    networks:
+      - kafka-net
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -50,6 +60,8 @@ services:
   kafka-2:
     image: confluentinc/cp-kafka:7.6.0
     container_name: kafka-broker-2
+    networks:
+      - kafka-net
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -76,6 +88,8 @@ services:
   kafka-3:
     image: confluentinc/cp-kafka:7.6.0
     container_name: kafka-broker-3
+    networks:
+      - kafka-net
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -102,6 +116,8 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
+    networks:
+      - kafka-net
     depends_on:
       kafka-1:
         condition: service_healthy
@@ -120,6 +136,8 @@ services:
   app:
     build: .
     container_name: kafka-payments-app
+    networks:
+      - kafka-net
     depends_on:
       kafka-1:
         condition: service_healthy
